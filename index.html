@@ -1195,23 +1195,77 @@ function renderWeek(){
 // ══════════════════════════════════
 // MONTH
 // ══════════════════════════════════
+function monthCatBreakdown(moTasks) {
+  if (!moTasks.length) return '<div class="empty">No tasks this month</div>';
+  const byCat = {};
+  moTasks.forEach(t => { byCat[t.cat] = (byCat[t.cat]||0)+1; });
+  return Object.entries(byCat).map(([cat,count]) =>
+    `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span class="tag tag-${cat}" style="min-width:68px;text-align:center">${cat}</span>
+      <div class="prog-bar" style="flex:1"><div class="prog-fill" style="width:${Math.round(count/moTasks.length*100)}%"></div></div>
+      <span style="font-size:12px;color:var(--text2);min-width:16px">${count}</span>
+    </div>`
+  ).join('');
+}
+
+function monthWtChart(wtMo) {
+  if (wtMo.length < 2) return '<div class="empty">Log more entries to see trend</div>';
+  const vals = wtMo.map(e=>e.kg);
+  const min = Math.min(...vals)-0.5, max = Math.max(...vals)+0.5;
+  const w=300, h=80;
+  const pts = vals.map((v,i)=>`${(i/(vals.length-1))*w},${h-((v-min)/(max-min))*h}`).join(' ');
+  const last=vals[vals.length-1], first=vals[0], diff=(last-first).toFixed(1);
+  const col = parseFloat(diff)<0 ? 'var(--teal)' : parseFloat(diff)>0 ? 'var(--red)' : 'var(--accent)';
+  return `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px">
+    <span style="color:var(--text2)">Start: <b>${first}kg</b></span>
+    <span style="color:${col};font-weight:600">${parseFloat(diff)>0?'+':''}${diff}kg</span>
+    <span style="color:var(--text2)">Now: <b>${last}kg</b></span>
+  </div>
+  <div class="wt-chart"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>
+    ${vals.map((v,i)=>`<circle cx="${(i/(vals.length-1))*w}" cy="${h-((v-min)/(max-min))*h}" r="3.5" fill="${col}"/>`).join('')}
+  </svg></div>`;
+}
+function renderMonthCalGrid(cells, yr, mo, todayStr) {
+  var html = '';
+  for (var i = 0; i < cells.length; i++) {
+    var d = cells[i];
+    if (!d) { html += '<div class="cal-cell empty"></div>'; continue; }
+    var mm = String(mo+1).padStart(2,'0');
+    var dd = String(d).padStart(2,'0');
+    var key = yr + '-' + mm + '-' + dd;
+    var hasTasks = S.tasks.some(function(t){return t.date===key;});
+    var isToday = key === todayStr;
+    var mood = S.moodLog[key];
+    var moodHtml = (mood !== undefined && !isToday) ? '<div class="cal-mood">'+MOODS[mood]+'</div>' : '';
+    html += '<div class="cal-cell' + (isToday?' today':'') + (hasTasks?' has-tasks':'') + '" onclick="showPage(&quot;today&quot;)">' + d + moodHtml + '</div>';
+  }
+  return html;
+}
+
 function renderMonth(){
-  const now=new Date(),yr=now.getFullYear(),mo=now.getMonth();
-  const firstDay=new Date(yr,mo,1).getDay(),offset=(firstDay+6)%7;
-  const dim=new Date(yr,mo+1,0).getDate();
-  const cells=[];for(let i=0;i<offset;i++)cells.push(null);for(let d=1;d<=dim;d++)cells.push(d);
-  const moKey=`${yr}-${String(mo+1).padStart(2,'0')}`;
-  const moTasks=S.tasks.filter(t=>t.date&&t.date.startsWith(moKey));
-  const moMoods=Object.entries(S.moodLog).filter(([k])=>k.startsWith(moKey)).map(([,v])=>v);
-  const avgMood=moMoods.length?moMoods.reduce((a,b)=>a+b,0)/moMoods.length:null;
-  const wtMo=S.weightLog.filter(w=>w.date.startsWith(moKey));
-  const todayStr=todayKey();
-  document.getElementById('page-month').innerHTML=`
-<div class="hdr"><div><h1>${now.toLocaleDateString('en-GB',{month:'long'})}</h1><p>${yr}</p></div></div>
-<div class="stats-row"><div class="stat-box"><div class="stat-num">${moTasks.filter(t=>t.done).length}/${moTasks.length}</div><div class="stat-lbl">Tasks</div></div><div class="stat-box"><div class="stat-num">${avgMood!==null?MOODS[Math.round(avgMood)]:'–'}</div><div class="stat-lbl">Avg mood</div></div><div class="stat-box"><div class="stat-num">${wtMo.length?wtMo[wtMo.length-1].kg+'kg':'–'}</div><div class="stat-lbl">Latest wt</div></div></div>
-<div class="card"><div class="month-hdr-row">${['M','T','W','T','F','S','S'].map(d=>`<div class="month-hdr-cell">${d}</div>`).join('')}</div><div class="month-grid">${cells.map(d=>{if(!d)return`<div class="cal-cell empty"></div>`;const key=`${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const hasTasks=S.tasks.some(t=>t.date===key),isToday=key===todayStr,mood=S.moodLog[key];return`<div class="cal-cell ${isToday?'today':''} ${hasTasks?'has-tasks':''}" onclick="showPage('today')">${d}${mood!==undefined&&!isToday?`<div class="cal-mood">${MOODS[mood]}</div>`:''}</div>`;}).join('')}</div></div>
-<div class="card"><div class="card-title">Weight this month</div>${wtMo.length<2?`<div class="empty">Log more entries to see trend</div>`:()=>{const vals=wtMo.map(e=>e.kg),min=Math.min(...vals)-0.5,max=Math.max(...vals)+0.5,w=300,h=80,pts=vals.map((v,i)=>`${(i/(vals.length-1))*w},${h-((v-min)/(max-min))*h}`).join(' '),last=vals[vals.length-1],first=vals[0],diff=(last-first).toFixed(1),col=parseFloat(diff)<0?'var(--teal)':parseFloat(diff)>0?'var(--red)':'var(--accent)';return`<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px"><span style="color:var(--text2)">Start: <b>${first}kg</b></span><span style="color:${col};font-weight:600">${parseFloat(diff)>0?'+':''}${diff}kg</span><span style="color:var(--text2)">Now: <b>${last}kg</b></span></div><div class="wt-chart"><svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round"/>${vals.map((v,i)=>`<circle cx="${(i/(vals.length-1))*w}" cy="${h-((v-min)/(max-min))*h}" r="3.5" fill="${col}"/>`).join('')}</svg></div>`;}()}</div>
-<div class="card"><div class="card-title">Category breakdown</div>${!moTasks.length?`<div class="empty">No tasks this month</div>`:()=>{const byCat={};moTasks.forEach(t=>{byCat[t.cat]=(byCat[t.cat]||0)+1});return Object.entries(byCat).map(([cat,count])=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span class="tag tag-${cat}" style="min-width:68px;text-align:center">${cat}</span><div class="prog-bar" style="flex:1"><div class="prog-fill" style="width:${Math.round(count/moTasks.length*100)}%"></div></div><span style="font-size:12px;color:var(--text2);min-width:16px">${count}</span></div>`).join('');}()}</div>`;
+  var now=new Date(), yr=now.getFullYear(), mo=now.getMonth();
+  var firstDay=new Date(yr,mo,1).getDay(), offset=(firstDay+6)%7;
+  var dim=new Date(yr,mo+1,0).getDate();
+  var cells=[]; for(var i=0;i<offset;i++)cells.push(null); for(var d=1;d<=dim;d++)cells.push(d);
+  var moKey=yr+'-'+String(mo+1).padStart(2,'0');
+  var moTasks=S.tasks.filter(function(t){return t.date&&t.date.startsWith(moKey);});
+  var moMoods=Object.entries(S.moodLog).filter(function(e){return e[0].startsWith(moKey);}).map(function(e){return e[1];});
+  var avgMood=moMoods.length?moMoods.reduce(function(a,b){return a+b;},0)/moMoods.length:null;
+  var wtMo=S.weightLog.filter(function(w){return w.date.startsWith(moKey);});
+  var todayStr=todayKey();
+  var calGrid = renderMonthCalGrid(cells, yr, mo, todayStr);
+  var hdrRow = '<div class="month-hdr-row"><div class="month-hdr-cell">M</div><div class="month-hdr-cell">T</div><div class="month-hdr-cell">W</div><div class="month-hdr-cell">T</div><div class="month-hdr-cell">F</div><div class="month-hdr-cell">S</div><div class="month-hdr-cell">S</div></div>';
+  document.getElementById('page-month').innerHTML =
+    '<div class="hdr"><div><h1>' + now.toLocaleDateString('en-GB',{month:'long'}) + '</h1><p>' + yr + '</p></div></div>' +
+    '<div class="stats-row">' +
+      '<div class="stat-box"><div class="stat-num">' + moTasks.filter(function(t){return t.done;}).length + '/' + moTasks.length + '</div><div class="stat-lbl">Tasks</div></div>' +
+      '<div class="stat-box"><div class="stat-num">' + (avgMood!==null?MOODS[Math.round(avgMood)]:'–') + '</div><div class="stat-lbl">Avg mood</div></div>' +
+      '<div class="stat-box"><div class="stat-num">' + (wtMo.length?wtMo[wtMo.length-1].kg+'kg':'–') + '</div><div class="stat-lbl">Latest wt</div></div>' +
+    '</div>' +
+    '<div class="card">' + hdrRow + '<div class="month-grid">' + calGrid + '</div></div>' +
+    '<div class="card"><div class="card-title">Weight this month</div>' + monthWtChart(wtMo) + '</div>' +
+    '<div class="card"><div class="card-title">Category breakdown</div>' + monthCatBreakdown(moTasks) + '</div>';
 }
 
 // ══════════════════════════════════
@@ -1316,3 +1370,4 @@ showPage('today');
 </script>
 </body>
 </html>
+
